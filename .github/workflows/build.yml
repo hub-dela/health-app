@@ -18,7 +18,7 @@ jobs:
       - run: |
          npm run compile
 
-      - name: Upload Report
+      - name: Upload Distributable
         uses: actions/upload-artifact@v3.1.2
         with:
           name: dist

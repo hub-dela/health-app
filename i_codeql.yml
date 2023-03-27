@@ -1,0 +1,12 @@
+name: "CodeQL config"
+
+disable-default-queries: false
+
+queries: []
+
+paths:
+  - . 
+paths-ignore: 
+  - '**/node_modules'
+  - '**/codeql'
+  - '**/*.test.js'

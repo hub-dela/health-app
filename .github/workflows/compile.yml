@@ -1,0 +1,27 @@
+name: 'Compile'
+
+on:
+  workflow_dispatch
+
+jobs:
+  build:
+    name: Build
+    runs-on: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: setup node
+        uses: actions/setup-node@v3      
+        with:
+          always-auth: false
+          node-version: "16.x"
+      - run: |
+         npm run compile
+
+      - name: Upload Distributable
+        uses: actions/upload-artifact@v3.1.2
+        with:
+          name: dist
+          path: |
+            ./dist
+          retention-days: 2

@@ -1,0 +1,307 @@
+name: CodeQL (Custom)
+
+## Prime function: Scans codebase for security vulnarabilities, code smells, and code quality issues
+## Documentation: 
+## https://github.com/github/codeql
+## https://github.com/github/codeql-action
+
+## Requires: Advanced Security License
+## Advanced Security must be enabled for this repository to use code scanning (Security overview > Code scanning alerts)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  details:
+    name: Details
+    runs-on: [ubuntu-latest]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.TOKEN }}
+
+    - name: Setup useful environment variables
+      uses: FranzDiebold/github-env-vars-action@v2
+
+    - name: Add Details
+      run: | 
+          echo '
+          | :rocket: CI_RUN_ID                | ${{env.CI_RUN_ID}}         |
+          | :-------------                    |:-------------:             |
+          | :performing_arts: CI_ACTOR        | ${{env.CI_ACTOR}}          |
+          | :curly_loop: CI_ACTION_REF_NAME   | ${{env.CI_ACTION_REF_NAME}}|
+          | :radio_button: CI_SHA             | ${{env.CI_SHA}}            |
+          | :ballot_box_with_check: PR        | ${{env.CI_PR_NUMBER || 'false' }} |
+          
+          :memo: Note:
+          Scans to be performed for Interpreted (codeql-i-scan) and Compiled (codeql-c-scan) languages.
+          
+          Currently this workflow handles `javascript`, `python` and `csharp`, `go`, `java` accordingly.
+          Note that workflow needs at least one respective `i_codeql.yml` or `c_codeql.yml` configuration present for scan to be performed.
+          For compliled languages we also require `codeql-build.sh`(with +x permission) to be present at profile location.
+          
+          Workflow greedily generate language-profile combinations.
+          This is intended, allowing more flexibility with profile designs (might be revisited in the future).
+          
+          Workflow skip-succeeds if no pairs for language-config detected.
+          ' >> $GITHUB_STEP_SUMMARY
+
+  configs:
+    name: Find Paths
+    needs: [details]
+    runs-on: [ubuntu-latest]
+    outputs:
+      ipaths: ${{ steps.set-i-matrix.outputs.value }}
+      cpaths: ${{ steps.set-c-matrix.outputs.value }}
+      iskip: ${{ steps.iskip.outputs.iskip }}
+      cskip: ${{ steps.cskip.outputs.cskip }}
+    steps:
+    - name: Setup useful environment variables
+      uses: FranzDiebold/github-env-vars-action@v2
+
+    - name: Setup tmp directory
+      run: |
+        uuid=$(uuidgen | cut -c1-8)
+        echo "CI_TMP_DIR=$uuid" >> $GITHUB_ENV
+        
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+        token: ${{ secrets.TOKEN }}
+        path: ./${{ env.CI_TMP_DIR }}
+        
+    - name: Setup useful environment variables
+      uses: FranzDiebold/github-env-vars-action@v2
+      
+    - name: Interpreted - Lookup existing configurations
+      id: iskip
+      run: |
+        CI_I_FOLDERS=$(find . -name i_codeql.yml -maxdepth 4 -exec dirname {} \;)
+        if [[ $(echo $CI_I_FOLDERS) == "" ]]; then echo "iskip=true"; else echo "iskip=false"; fi >> $GITHUB_OUTPUT
+        echo "CI_I_FOLDERS=$(echo $CI_I_FOLDERS)" >> $GITHUB_ENV
+      working-directory: ${{ env.CI_TMP_DIR }}
+      
+    - name: Compiled - Lookup existing configurations
+      id: cskip
+      run: |
+        CI_C_FOLDERS=$(find . -name c_codeql.yml -maxdepth 4 -exec dirname {} \;)
+        if [[ $(echo $CI_C_FOLDERS) == "" ]]; then echo "cskip=true"; else echo "cskip=false"; fi >> $GITHUB_OUTPUT
+        echo "CI_C_FOLDERS=$(echo $CI_C_FOLDERS)" >> $GITHUB_ENV
+      working-directory: ${{ env.CI_TMP_DIR }}
+
+    - id: set-i-matrix
+      run: |
+        I_DIRS=""
+        for folder in ${{ env.CI_I_FOLDERS }}; do I_DIRS="$I_DIRS '$folder'"; done;
+        I_DIRS=[$(echo $I_DIRS | tr ' ' ,)]
+        echo "CI_I_DIRS=$I_DIRS" >> $GITHUB_ENV
+        echo "value=$I_DIRS" >> $GITHUB_OUTPUT
+        
+    - id: set-c-matrix
+      run: |
+        C_DIRS=""
+        for folder in ${{ env.CI_C_FOLDERS }}; do C_DIRS="$C_DIRS '$folder'"; done;
+        C_DIRS=[$(echo $C_DIRS | tr ' ' ,)]
+        echo "CI_C_DIRS=$C_DIRS" >> $GITHUB_ENV
+        echo "value=$C_DIRS" >> $GITHUB_OUTPUT
+        
+    - name: Clean
+      if: always()
+      run: |
+        rm -rf ${{ env.CI_TMP_DIR }}
+
+  profile:
+    name: Set Languages
+    needs: [details]
+    runs-on: [ubuntu-latest]
+    outputs:
+      ilanguage: ${{ steps.profiles.outputs.iprofiles }}
+      clanguage: ${{ steps.profiles.outputs.cprofiles }}
+    steps:
+      - name: Setup useful environment variables
+        uses: FranzDiebold/github-env-vars-action@v2
+        
+      - name: Form scanning profile for this repository
+        id: profiles
+        run: |
+          ##map languages to codeql profile setting names
+          declare -A csupported=()
+          csupported[C#]='csharp'
+          csupported[Go]='go'
+          csupported[Java]='java'
+          
+          declare -A isupported=()
+          isupported[JavaScript]='javascript'
+          isupported[TypeScript]='javascript'
+          isupported[HTML]='javascript'
+          isupported[CSS]='javascript'
+          isupported[Python]='python'
+
+          ##get repository languages
+          gh auth login --with-token < <(echo ${{secrets.TOKEN}})
+          repolang="$(gh api repos/${{ env.CI_REPOSITORY }}/languages -q 'keys[]')"          
+          
+          iselection=()
+          for lang in $(echo $repolang | xargs -n1); do iselection+=" ${isupported[$lang]}"; done;
+          iqlprofiles="$(echo $iselection | xargs -n1 | sort -u )"
+          
+          cselection=()
+          for lang in $(echo $repolang | xargs -n1); do cselection+=" ${csupported[$lang]}"; done;
+          cqlprofiles="$(echo $cselection | xargs -n1 | sort -u )"
+          
+          ##form a proper array 'value1', 'value2' using bash string formatter
+          iprofiles="[$(echo "'${iqlprofiles[@]//[[:space:]]/"','"}'")]"
+          cprofiles="[$(echo "'${cqlprofiles[@]//[[:space:]]/"','"}'")]"
+          
+          ##show and push formatted output
+          echo Interpreted profiles - $iprofiles
+          echo "iprofiles=$iprofiles" >> $GITHUB_OUTPUT
+          
+          echo Compiled profiles - $cprofiles
+          echo "cprofiles=$cprofiles" >> $GITHUB_OUTPUT
+          
+  codeql-i-scan:
+    if: ${{ needs.configs.outputs.iskip == 'false'}}
+    needs: [configs, profile]
+    runs-on: [ubuntu-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{fromJSON(needs.configs.outputs.ipaths)}}
+        language: ${{fromJSON(needs.profile.outputs.ilanguage)}}
+    permissions:
+      # required for all workflows
+      security-events: write
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+      
+    steps:
+      - name: Setup UUID
+        run: |
+          uuid=$(uuidgen | cut -c1-8)
+          tmpDir="$(mkdir $uuid && cd $uuid && pwd)"
+          echo "CI_TMP_DIR=$uuid" >> $GITHUB_ENV
+          
+      - name: Setup useful environment variables
+        uses: FranzDiebold/github-env-vars-action@v2
+ 
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          token: ${{ secrets.TOKEN }}
+          path: ./${{ env.CI_TMP_DIR }}        
+         
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          queries: +./${{ env.CI_TMP_DIR }}/codeql/deps.ql
+          config-file: ${{ env.CI_REPOSITORY }}/i_codeql.yml@${{ env.CI_ACTION_REF_NAME }}
+          languages: ${{ matrix.language }} 
+          external-repository-token: ${{ secrets.TOKEN }}
+          source-root: ${{ env.CI_TMP_DIR }}
+          db-location: ${{ env.CI_TMP_DIR }}/${{ matrix.language }}
+          
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          checkout_path: ${{ env.CI_TMP_DIR }}
+          output: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results
+        
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results/${{ matrix.language }}.sarif
+          # Optional category for the results
+          # Used to differentiate multiple results for one commit
+          category: codeql-${{ matrix.language }}-${{ matrix.path }}
+          
+      - name: Clean
+        if: always()
+        run: |
+          rm -rf ${{ env.CI_TMP_DIR }}
+          
+  codeql-c-scan:
+    if: ${{ needs.configs.outputs.cskip == 'false'}}
+    needs: [configs, profile]
+    runs-on: [ubuntu-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{fromJSON(needs.configs.outputs.cpaths)}}
+        language: ${{fromJSON(needs.profile.outputs.clanguage)}}
+    permissions:
+      # required for all workflows
+      security-events: write
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+      
+    steps:          
+      - name: Setup tmp directory
+        run: |
+          uuid=$(uuidgen | cut -c1-8)
+          echo "CI_TMP_DIR=$uuid" >> $GITHUB_ENV
+          
+      - name: Setup useful environment variables
+        uses: FranzDiebold/github-env-vars-action@v2
+            
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          token: ${{ secrets.TOKEN }}
+          path: ./${{ env.CI_TMP_DIR }} 
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          config-file: ${{ env.CI_REPOSITORY }}/c_codeql.yml@${{ env.CI_ACTION_REF_NAME }}
+          languages: ${{ matrix.language }}          
+          external-repository-token: ${{ secrets.TOKEN }}
+          source-root: ${{ env.CI_TMP_DIR }}
+          db-location: ${{ env.CI_TMP_DIR }}/${{ matrix.language }}
+          
+      - name: Check and executre build command (codeql-build.sh)
+        run: |
+          if [ -s "codeql-build.sh" ]; then echo "::info:: build command found, executing..."; else echo "::error:: unable to build, aborting" && exit 1; fi;
+          ./codeql-build.sh
+        working-directory: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}
+          
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          checkout_path: ${{ env.CI_TMP_DIR }}
+          output: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results
+        
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results/${{ matrix.language }}.sarif
+          # Optional category for the results
+          # Used to differentiate multiple results for one commit
+          category: codeql-${{ matrix.language }}-${{ matrix.path }}
+      
+      - name: Clean
+        if: always()
+        run: |
+          rm -rf ${{ env.CI_TMP_DIR }}
+          
+  codeql-complete:
+    runs-on: [ubuntu-latest]
+    name: CodeQL Complete
+    needs: [codeql-i-scan, codeql-c-scan]
+    if: always() 
+    steps:
+      - name: Interpreted Check
+        run: |
+         if [[ ${{needs.codeql-i-scan.result}} == failure ]]; then echo "ERR: CodeQL scan failed" && exit 1; else echo "INF: CodeQL scan passed" && exit 0; fi;
+      
+      - name: Compiled Check
+        run: |
+         if [[ ${{needs.codeql-c-scan.result}} == failure ]]; then echo "ERR: CodeQL scan failed" && exit 1; else echo "INF: CodeQL scan passed" && exit 0; fi;

@@ -1,0 +1,28 @@
+{
+  "name": "health-app",
+  "version": "1.0.0",
+  "description": "health app",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo 'no tests here'",
+    "start": "node index.js",
+    "compile": "npm i && ncc build index.js --license licenses.txt --out dist",
+    "dock": "npm run compile && docker build -f Dockerfile .",
+    "dock_run": "docker run -d --name health -p 4000:4000",
+    "ql_init": "codeql pack init -d . codeql",
+    "ql_ref": "codeql pack add --dir ./codeql codeql/javascript-all",
+    "ql_db": "codeql database create codeql/db -s . -l javascript",
+    "ql_all": "npm run ql_init && npm run ql_ref && npm run ql_db"
+  },
+  "author": "hub-dela",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.17.1",
+    "express-handlebars": "^7.0.4",
+    "express-promise-router": "^4.0.1"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.36.0",
+    "dotenv": "^16.0.3"
+  }
+}

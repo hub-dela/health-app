@@ -18,7 +18,7 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.17.1",
-    "express-handlebars": "^7.0.6",
+    "express-handlebars": "^7.1.2",
     "express-promise-router": "^4.0.1"
   },
   "devDependencies": {

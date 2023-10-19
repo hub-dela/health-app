@@ -19,7 +19,7 @@ jobs:
          npm run compile
 
       - name: Upload Distributable
-        uses: actions/upload-artifact@v3.1.2
+        uses: actions/upload-artifact@v3.1.3
         with:
           name: dist
           path: |

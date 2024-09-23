@@ -22,7 +22,7 @@
     "express-promise-router": "^4.0.1"
   },
   "devDependencies": {
-    "@vercel/ncc": "^0.38.1",
+    "@vercel/ncc": "^0.38.2",
     "dotenv": "^16.4.5"
   }
 }

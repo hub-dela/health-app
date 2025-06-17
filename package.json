@@ -17,7 +17,7 @@
   "author": "hub-dela",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^5.1.0",
     "express-handlebars": "^8.0.1",
     "express-promise-router": "^4.0.1"
   },

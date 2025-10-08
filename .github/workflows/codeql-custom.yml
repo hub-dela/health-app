@@ -196,7 +196,7 @@ jobs:
           path: ./${{ env.CI_TMP_DIR }}        
          
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           queries: +./${{ env.CI_TMP_DIR }}/codeql/deps.ql
           config-file: ${{ env.CI_REPOSITORY }}/i_codeql.yml@${{ env.CI_ACTION_REF_NAME }}
@@ -206,13 +206,13 @@ jobs:
           db-location: ${{ env.CI_TMP_DIR }}/${{ matrix.language }}
           
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           checkout_path: ${{ env.CI_TMP_DIR }}
           output: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results
         
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results/${{ matrix.language }}.sarif
@@ -258,7 +258,7 @@ jobs:
           path: ./${{ env.CI_TMP_DIR }} 
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           config-file: ${{ env.CI_REPOSITORY }}/c_codeql.yml@${{ env.CI_ACTION_REF_NAME }}
           languages: ${{ matrix.language }}          
@@ -273,13 +273,13 @@ jobs:
         working-directory: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}
           
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           checkout_path: ${{ env.CI_TMP_DIR }}
           output: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results
         
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: ${{ env.CI_TMP_DIR }}/${{ matrix.path }}/results/${{ matrix.language }}.sarif

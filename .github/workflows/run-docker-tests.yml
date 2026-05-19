@@ -36,7 +36,8 @@ jobs:
           done
 
           # list of endpoints to test
-          ENDPOINTS=("/" "/health" "/api/status")
+          # match actual app routes
+          ENDPOINTS=("/" "/health/live" "/health/ready")
           FAILS=0
 
           for ep in "${ENDPOINTS[@]}"; do

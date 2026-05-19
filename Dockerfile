@@ -1,4 +1,4 @@
-FROM node:16.18.1-alpine
+FROM node:24.15.0-alpine
 
 COPY ./dist /app/
 

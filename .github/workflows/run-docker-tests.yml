@@ -1,0 +1,73 @@
+name: Run Docker Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  docker-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build, run and test container
+        run: |
+          set -euo pipefail
+          IMAGE=health-app:test
+          CONTAINER=testapp
+          echo "Building image $IMAGE"
+          docker build -t "$IMAGE" .
+
+          echo "Starting container $CONTAINER"
+          docker run -d --rm -p 4000:4000 --name "$CONTAINER" "$IMAGE"
+
+          echo "Waiting for service on http://localhost:4000/"
+          for i in $(seq 1 30); do
+            if curl -sSf http://localhost:4000/ >/dev/null 2>&1; then
+              echo "Service is up"
+              break
+            fi
+            sleep 1
+            if [ "$i" -eq 30 ]; then
+              echo "Service did not start in time"
+              docker logs "$CONTAINER" || true
+              exit 1
+            fi
+          done
+
+          # list of endpoints to test
+          ENDPOINTS=("/" "/health" "/api/status")
+          FAILS=0
+
+          for ep in "${ENDPOINTS[@]}"; do
+            echo "Testing endpoint: $ep"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:4000${ep}") || true
+            echo "Response code for $ep: $HTTP_CODE"
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "OK: $ep -> $HTTP_CODE"
+            else
+              echo "FAIL: $ep -> $HTTP_CODE"
+              FAILS=$((FAILS+1))
+            fi
+          done
+
+          if [ "$FAILS" -gt 0 ]; then
+            echo "$FAILS endpoint(s) failed"
+            docker logs "$CONTAINER" || true
+            exit 1
+          fi
+
+      - name: Cleanup on success
+        if: success()
+        run: |
+          echo "Cleaning up: removing container and image"
+          docker rm -f testapp || true
+          docker rmi -f health-app:test || true
+
+      - name: Cleanup on failure (collect logs)
+        if: failure()
+        run: |
+          echo "Run failed — collecting logs and removing container/image"
+          docker logs testapp || true
+          docker rm -f testapp || true
+          docker rmi -f health-app:test || true
